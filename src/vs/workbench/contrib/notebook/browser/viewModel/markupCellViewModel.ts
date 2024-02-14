@@ -7,15 +7,14 @@ import { Emitter, Event } from 'vs/base/common/event';
 import * as UUID from 'vs/base/common/uuid';
 import * as editorCommon from 'vs/editor/common/editorCommon';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { CellEditState, CellFindMatch, CellFoldingState, CellLayoutContext, CellLayoutState, EditorFoldingStateDelegate, ICellOutputViewModel, ICellViewModel, MarkdownCellLayoutChangeEvent, MarkdownCellLayoutInfo } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
+import { CellEditState, CellFindMatch, CellFoldingState, CellLayoutContext, CellLayoutState, EditorFoldingStateDelegate, ICellOutputViewModel, ICellViewModel, MarkupCellLayoutChangeEvent, MarkupCellLayoutInfo } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
 import { BaseCellViewModel } from 'vs/workbench/contrib/notebook/browser/viewModel/baseCellViewModel';
 import { NotebookCellTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookCellTextModel';
 import { CellKind, INotebookSearchOptions } from 'vs/workbench/contrib/notebook/common/notebookCommon';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
 import { ViewContext } from 'vs/workbench/contrib/notebook/browser/viewModel/viewContext';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IUndoRedoService } from 'vs/platform/undoRedo/common/undoRedo';
-import { NotebookOptionsChangeEvent } from 'vs/workbench/contrib/notebook/common/notebookOptions';
+import { NotebookOptionsChangeEvent } from 'vs/workbench/contrib/notebook/browser/notebookOptions';
 import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { NotebookCellStateChangedEvent, NotebookLayoutInfo } from 'vs/workbench/contrib/notebook/browser/notebookViewEvents';
 
@@ -23,14 +22,16 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 
 	readonly cellKind = CellKind.Markup;
 
-	private _layoutInfo: MarkdownCellLayoutInfo;
+	private _layoutInfo: MarkupCellLayoutInfo;
 
 	private _renderedHtml?: string;
 
 	public get renderedHtml(): string | undefined { return this._renderedHtml; }
 	public set renderedHtml(value: string | undefined) {
-		this._renderedHtml = value;
-		this._onDidChangeState.fire({ contentChanged: true });
+		if (this._renderedHtml !== value) {
+			this._renderedHtml = value;
+			this._onDidChangeState.fire({ contentChanged: true });
+		}
 	}
 
 	get layoutInfo() {
@@ -42,6 +43,17 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 	set renderedMarkdownHeight(newHeight: number) {
 		this._previewHeight = newHeight;
 		this._updateTotalHeight(this._computeTotalHeight());
+	}
+
+	private _chatHeight = 0;
+
+	set chatHeight(newHeight: number) {
+		this._chatHeight = newHeight;
+		this._updateTotalHeight(this._computeTotalHeight());
+	}
+
+	get chatHeight() {
+		return this._chatHeight;
 	}
 
 	private _editorHeight = 0;
@@ -56,7 +68,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 		throw new Error('MarkdownCellViewModel.editorHeight is write only');
 	}
 
-	protected readonly _onDidChangeLayout = this._register(new Emitter<MarkdownCellLayoutChangeEvent>());
+	protected readonly _onDidChangeLayout = this._register(new Emitter<MarkupCellLayoutChangeEvent>());
 	readonly onDidChangeLayout = this._onDidChangeLayout.event;
 
 	get foldingState() {
@@ -99,7 +111,6 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 		readonly viewContext: ViewContext,
 		@IConfigurationService configurationService: IConfigurationService,
 		@ITextModelService textModelService: ITextModelService,
-		@IInstantiationService instantiationService: IInstantiationService,
 		@IUndoRedoService undoRedoService: IUndoRedoService,
 		@ICodeEditorService codeEditorService: ICodeEditorService
 	) {
@@ -108,6 +119,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 		const { bottomToolbarGap } = this.viewContext.notebookOptions.computeBottomToolbarDimensions(this.viewType);
 
 		this._layoutInfo = {
+			chatHeight: 0,
 			editorHeight: 0,
 			previewHeight: 0,
 			fontInfo: initialNotebookLayoutInfo?.fontInfo || null,
@@ -183,7 +195,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 		}
 	}
 
-	layoutChange(state: MarkdownCellLayoutChangeEvent) {
+	layoutChange(state: MarkupCellLayoutChangeEvent) {
 		// recompute
 		const foldHintHeight = this._computeFoldHintHeight();
 		if (!this.isInputCollapsed) {
@@ -199,6 +211,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 				fontInfo: state.font || this._layoutInfo.fontInfo,
 				editorWidth,
 				previewHeight,
+				chatHeight: this._chatHeight,
 				editorHeight: this._editorHeight,
 				statusBarHeight: this._statusBarHeight,
 				bottomToolbarOffset: this.viewContext.notebookOptions.computeBottomToolbarOffset(totalHeight, this.viewType),
@@ -217,6 +230,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 			this._layoutInfo = {
 				fontInfo: state.font || this._layoutInfo.fontInfo,
 				editorWidth,
+				chatHeight: this._chatHeight,
 				editorHeight: this._editorHeight,
 				statusBarHeight: this._statusBarHeight,
 				previewHeight: this._previewHeight,
@@ -240,6 +254,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 				previewHeight: this._layoutInfo.previewHeight,
 				bottomToolbarOffset: this._layoutInfo.bottomToolbarOffset,
 				totalHeight: totalHeight,
+				chatHeight: this._chatHeight,
 				editorHeight: this._editorHeight,
 				statusBarHeight: this._statusBarHeight,
 				layoutState: CellLayoutState.FromCache,
@@ -247,10 +262,6 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 			};
 			this.layoutChange({});
 		}
-	}
-
-	hasDynamicHeight() {
-		return false;
 	}
 
 	getDynamicHeight() {
@@ -285,8 +296,7 @@ export class MarkupCellViewModel extends BaseCellViewModel implements ICellViewM
 
 		return {
 			cell: this,
-			matches,
-			modelMatchCount: matches.length
+			contentMatches: matches
 		};
 	}
 

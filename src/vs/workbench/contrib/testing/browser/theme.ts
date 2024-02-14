@@ -5,9 +5,8 @@
 
 import { Color, RGBA } from 'vs/base/common/color';
 import { localize } from 'vs/nls';
-import { contrastBorder, editorErrorForeground, editorForeground, inputActiveOptionBackground, inputActiveOptionBorder, inputActiveOptionForeground, registerColor, transparent } from 'vs/platform/theme/common/colorRegistry';
+import { badgeBackground, badgeForeground, chartsGreen, chartsRed, contrastBorder, diffInserted, diffRemoved, editorBackground, editorErrorForeground, editorForeground, editorInfoForeground, opaque, registerColor, transparent } from 'vs/platform/theme/common/colorRegistry';
 import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
-import { ACTIVITY_BAR_BADGE_BACKGROUND } from 'vs/workbench/common/theme';
 import { TestMessageType, TestResultState } from 'vs/workbench/contrib/testing/common/testTypes';
 
 export const testingColorIconFailed = registerColor('testing.iconFailed', {
@@ -66,12 +65,89 @@ export const testingPeekBorder = registerColor('testing.peekBorder', {
 	hcLight: contrastBorder
 }, localize('testing.peekBorder', 'Color of the peek view borders and arrow.'));
 
+export const testingMessagePeekBorder = registerColor('testing.messagePeekBorder', {
+	dark: editorInfoForeground,
+	light: editorInfoForeground,
+	hcDark: contrastBorder,
+	hcLight: contrastBorder
+}, localize('testing.messagePeekBorder', 'Color of the peek view borders and arrow when peeking a logged message.'));
+
 export const testingPeekHeaderBackground = registerColor('testing.peekHeaderBackground', {
 	dark: transparent(editorErrorForeground, 0.1),
 	light: transparent(editorErrorForeground, 0.1),
 	hcDark: null,
 	hcLight: null
 }, localize('testing.peekBorder', 'Color of the peek view borders and arrow.'));
+
+export const testingPeekMessageHeaderBackground = registerColor('testing.messagePeekHeaderBackground', {
+	dark: transparent(editorInfoForeground, 0.1),
+	light: transparent(editorInfoForeground, 0.1),
+	hcDark: null,
+	hcLight: null
+}, localize('testing.messagePeekHeaderBackground', 'Color of the peek view borders and arrow when peeking a logged message.'));
+
+export const testingCoveredBackground = registerColor('testing.coveredBackground', {
+	dark: diffInserted,
+	light: diffInserted,
+	hcDark: null,
+	hcLight: null
+}, localize('testing.coveredBackground', 'Background color of text that was covered.'));
+
+export const testingCoveredBorder = registerColor('testing.coveredBorder', {
+	dark: transparent(testingCoveredBackground, 0.75),
+	light: transparent(testingCoveredBackground, 0.75),
+	hcDark: contrastBorder,
+	hcLight: contrastBorder
+}, localize('testing.coveredBorder', 'Border color of text that was covered.'));
+
+export const testingCoveredGutterBackground = registerColor('testing.coveredGutterBackground', {
+	dark: transparent(diffInserted, 0.6),
+	light: transparent(diffInserted, 0.6),
+	hcDark: chartsGreen,
+	hcLight: chartsGreen
+}, localize('testing.coveredGutterBackground', 'Gutter color of regions where code was covered.'));
+
+export const testingUncoveredBranchBackground = registerColor('testing.uncoveredBranchBackground', {
+	dark: opaque(transparent(diffRemoved, 2), editorBackground),
+	light: opaque(transparent(diffRemoved, 2), editorBackground),
+	hcDark: null,
+	hcLight: null
+}, localize('testing.uncoveredBranchBackground', 'Background of the widget shown for an uncovered branch.'));
+
+export const testingUncoveredBackground = registerColor('testing.uncoveredBackground', {
+	dark: diffRemoved,
+	light: diffRemoved,
+	hcDark: null,
+	hcLight: null
+}, localize('testing.uncoveredBackground', 'Background color of text that was not covered.'));
+
+export const testingUncoveredBorder = registerColor('testing.uncoveredBorder', {
+	dark: transparent(testingUncoveredBackground, 0.75),
+	light: transparent(testingUncoveredBackground, 0.75),
+	hcDark: contrastBorder,
+	hcLight: contrastBorder
+}, localize('testing.uncoveredBorder', 'Border color of text that was not covered.'));
+
+export const testingUncoveredGutterBackground = registerColor('testing.uncoveredGutterBackground', {
+	dark: transparent(diffRemoved, 1.5),
+	light: transparent(diffRemoved, 1.5),
+	hcDark: chartsRed,
+	hcLight: chartsRed
+}, localize('testing.uncoveredGutterBackground', 'Gutter color of regions where code not covered.'));
+
+export const testingCoverCountBadgeBackground = registerColor('testing.coverCountBadgeBackground', {
+	dark: badgeBackground,
+	light: badgeBackground,
+	hcDark: badgeBackground,
+	hcLight: badgeBackground
+}, localize('testing.coverCountBadgeBackground', 'Background for the badge indicating execution count'));
+
+export const testingCoverCountBadgeForeground = registerColor('testing.coverCountBadgeForeground', {
+	dark: badgeForeground,
+	light: badgeForeground,
+	hcDark: badgeForeground,
+	hcLight: badgeForeground
+}, localize('testing.coverCountBadgeForeground', 'Foreground for the badge indicating execution count'));
 
 export const testMessageSeverityColors: {
 	[K in TestMessageType]: {
@@ -91,7 +167,7 @@ export const testMessageSeverityColors: {
 			localize('testing.message.error.marginBackground', 'Margin color beside error messages shown inline in the editor.')
 		),
 	},
-	[TestMessageType.Info]: {
+	[TestMessageType.Output]: {
 		decorationForeground: registerColor(
 			'testing.message.info.decorationForeground',
 			{ dark: transparent(editorForeground, 0.5), light: transparent(editorForeground, 0.5), hcDark: transparent(editorForeground, 0.5), hcLight: transparent(editorForeground, 0.5) },
@@ -114,30 +190,23 @@ export const testStatesToIconColors: { [K in TestResultState]?: string } = {
 	[TestResultState.Skipped]: testingColorIconSkipped,
 };
 
-
 registerThemingParticipant((theme, collector) => {
-	//#region test states
-	for (const [state, { marginBackground }] of Object.entries(testMessageSeverityColors)) {
-		collector.addRule(`.monaco-editor .testing-inline-message-severity-${state} {
-			background: ${theme.getColor(marginBackground)};
-		}`);
-	}
-	//#endregion test states
 
-	//#region active buttons
-	const inputActiveOptionBorderColor = theme.getColor(inputActiveOptionBorder);
-	if (inputActiveOptionBorderColor) {
-		collector.addRule(`.testing-filter-action-item > .monaco-action-bar .testing-filter-button.checked { border-color: ${inputActiveOptionBorderColor}; }`);
+	const editorBg = theme.getColor(editorBackground);
+	const missBadgeBackground = editorBg && theme.getColor(testingUncoveredBackground)?.transparent(2).makeOpaque(editorBg);
+
+	collector.addRule(`
+	.coverage-deco-inline.coverage-deco-hit.coverage-deco-hovered {
+		background: ${theme.getColor(testingCoveredBackground)?.transparent(1.3)};
+		outline-color: ${theme.getColor(testingCoveredBorder)?.transparent(2)};
 	}
-	const inputActiveOptionForegroundColor = theme.getColor(inputActiveOptionForeground);
-	if (inputActiveOptionForegroundColor) {
-		collector.addRule(`.testing-filter-action-item > .monaco-action-bar .testing-filter-button.checked { color: ${inputActiveOptionForegroundColor}; }`);
+	.coverage-deco-inline.coverage-deco-miss.coverage-deco-hovered {
+		background: ${theme.getColor(testingUncoveredBackground)?.transparent(1.3)};
+		outline-color: ${theme.getColor(testingUncoveredBorder)?.transparent(2)};
 	}
-	const inputActiveOptionBackgroundColor = theme.getColor(inputActiveOptionBackground);
-	if (inputActiveOptionBackgroundColor) {
-		collector.addRule(`.testing-filter-action-item > .monaco-action-bar .testing-filter-button.checked { background-color: ${inputActiveOptionBackgroundColor}; }`);
+	.coverage-deco-branch-miss-indicator::before {
+		border-color: ${missBadgeBackground?.transparent(1.3)};
+		background-color: ${missBadgeBackground};
 	}
-	const badgeColor = theme.getColor(ACTIVITY_BAR_BADGE_BACKGROUND);
-	collector.addRule(`.monaco-workbench .part > .title > .title-actions .action-label.codicon-testing-autorun::after { background-color: ${badgeColor}; }`);
-	//#endregion
+	`);
 });

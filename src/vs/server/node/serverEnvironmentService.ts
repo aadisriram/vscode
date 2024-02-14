@@ -9,14 +9,15 @@ import { NativeEnvironmentService } from 'vs/platform/environment/node/environme
 import { OPTIONS, OptionDescriptions } from 'vs/platform/environment/node/argv';
 import { refineServiceDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IEnvironmentService, INativeEnvironmentService } from 'vs/platform/environment/common/environment';
+import { memoize } from 'vs/base/common/decorators';
+import { URI } from 'vs/base/common/uri';
 
-export const serverOptions: OptionDescriptions<ServerParsedArgs> = {
+export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
 
 	/* ----- server setup ----- */
 
 	'host': { type: 'string', cat: 'o', args: 'ip-address', description: nls.localize('host', "The host name or IP address the server should listen to. If not set, defaults to 'localhost'.") },
 	'port': { type: 'string', cat: 'o', args: 'port | port range', description: nls.localize('port', "The port the server should listen to. If 0 is passed a random free port is picked. If a range in the format num-num is passed, a free port from the range (end inclusive) is selected.") },
-	'pick-port': { type: 'string', deprecationMessage: 'Use the range notation in \'port\' instead.' },
 	'socket-path': { type: 'string', cat: 'o', args: 'path', description: nls.localize('socket-path', "The path to a socket file for the server to listen to.") },
 	'connection-token': { type: 'string', cat: 'o', args: 'token', deprecates: ['connectionToken'], description: nls.localize('connection-token', "A secret that must be included with all requests.") },
 	'connection-token-file': { type: 'string', cat: 'o', args: 'path', deprecates: ['connection-secret', 'connectionTokenFile'], description: nls.localize('connection-token-file', "Path to a file that contains the connection token.") },
@@ -49,6 +50,7 @@ export const serverOptions: OptionDescriptions<ServerParsedArgs> = {
 
 	'enable-sync': { type: 'boolean' },
 	'github-auth': { type: 'string' },
+	'use-test-resolver': { type: 'boolean' },
 
 	/* ----- extension management ----- */
 
@@ -57,6 +59,7 @@ export const serverOptions: OptionDescriptions<ServerParsedArgs> = {
 	'builtin-extensions-dir': OPTIONS['builtin-extensions-dir'],
 	'install-extension': OPTIONS['install-extension'],
 	'install-builtin-extension': OPTIONS['install-builtin-extension'],
+	'update-extensions': OPTIONS['update-extensions'],
 	'uninstall-extension': OPTIONS['uninstall-extension'],
 	'list-extensions': OPTIONS['list-extensions'],
 	'locate-extension': OPTIONS['locate-extension'],
@@ -81,6 +84,7 @@ export const serverOptions: OptionDescriptions<ServerParsedArgs> = {
 
 	'help': OPTIONS['help'],
 	'version': OPTIONS['version'],
+	'locate-shell-integration-path': OPTIONS['locate-shell-integration-path'],
 
 	'compatibility': { type: 'string' },
 
@@ -92,8 +96,10 @@ export interface ServerParsedArgs {
 	/* ----- server setup ----- */
 
 	host?: string;
+	/**
+	 * A port or a port range
+	 */
 	port?: string;
-	'pick-port'?: string;
 	'socket-path'?: string;
 
 	/**
@@ -145,7 +151,7 @@ export interface ServerParsedArgs {
 	'disable-telemetry'?: boolean;
 	'file-watcher-polling'?: string;
 
-	'log'?: string;
+	'log'?: string[];
 	'logsPath'?: string;
 
 	'force-disable-user-env'?: boolean;
@@ -155,14 +161,15 @@ export interface ServerParsedArgs {
 	'default-workspace'?: string;
 	'default-folder'?: string;
 
-	/** @deprecated, use default-workspace instead */
+	/** @deprecated use default-workspace instead */
 	workspace: string;
-	/** @deprecated, use default-folder instead */
+	/** @deprecated use default-folder instead */
 	folder: string;
 
 
 	'enable-sync'?: boolean;
 	'github-auth'?: string;
+	'use-test-resolver'?: boolean;
 
 	/* ----- extension management ----- */
 
@@ -171,6 +178,7 @@ export interface ServerParsedArgs {
 	'builtin-extensions-dir'?: string;
 	'install-extension'?: string[];
 	'install-builtin-extension'?: string[];
+	'update-extensions'?: boolean;
 	'uninstall-extension'?: string[];
 	'list-extensions'?: boolean;
 	'locate-extension'?: string[];
@@ -193,6 +201,7 @@ export interface ServerParsedArgs {
 	/* ----- server cli ----- */
 	help: boolean;
 	version: boolean;
+	'locate-shell-integration-path'?: string;
 
 	compatibility: string;
 
@@ -206,5 +215,7 @@ export interface IServerEnvironmentService extends INativeEnvironmentService {
 }
 
 export class ServerEnvironmentService extends NativeEnvironmentService implements IServerEnvironmentService {
+	@memoize
+	override get userRoamingDataHome(): URI { return this.appSettingsHome; }
 	override get args(): ServerParsedArgs { return super.args as ServerParsedArgs; }
 }

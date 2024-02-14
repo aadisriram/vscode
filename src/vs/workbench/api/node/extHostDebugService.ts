@@ -26,6 +26,7 @@ import { hasChildProcesses, prepareCommand } from 'vs/workbench/contrib/debug/no
 import { ExtensionDescriptionRegistry } from 'vs/workbench/services/extensions/common/extensionDescriptionRegistry';
 import type * as vscode from 'vscode';
 import { ExtHostConfigProvider, IExtHostConfiguration } from '../common/extHostConfiguration';
+import { IExtHostCommands } from 'vs/workbench/api/common/extHostCommands';
 
 export class ExtHostDebugService extends ExtHostDebugServiceBase {
 
@@ -42,8 +43,9 @@ export class ExtHostDebugService extends ExtHostDebugServiceBase {
 		@IExtHostTerminalService private _terminalService: IExtHostTerminalService,
 		@IExtHostEditorTabs editorTabs: IExtHostEditorTabs,
 		@IExtHostVariableResolverProvider variableResolver: IExtHostVariableResolverProvider,
+		@IExtHostCommands commands: IExtHostCommands,
 	) {
-		super(extHostRpcService, workspaceService, extensionService, configurationService, editorTabs, variableResolver);
+		super(extHostRpcService, workspaceService, extensionService, configurationService, editorTabs, variableResolver, commands);
 	}
 
 	protected override createDebugAdapter(adapter: IAdapterDescriptor, session: ExtHostDebugSession): AbstractDebugAdapter | undefined {
@@ -134,13 +136,13 @@ export class ExtHostDebugService extends ExtHostDebugServiceBase {
 				}
 			}
 
-			const command = prepareCommand(shell, args.args, cwdForPrepareCommand, args.env);
+			const command = prepareCommand(shell, args.args, !!args.argsCanBeInterpretedByShell, cwdForPrepareCommand, args.env);
 			terminal.sendText(command);
 
 			// Mark terminal as unused when its session ends, see #112055
 			const sessionListener = this.onDidTerminateDebugSession(s => {
 				if (s.id === sessionId) {
-					this._integratedTerminalInstances.free(terminal!);
+					this._integratedTerminalInstances.free(terminal);
 					sessionListener.dispose();
 				}
 			});
@@ -156,7 +158,7 @@ export class ExtHostDebugService extends ExtHostDebugServiceBase {
 
 let externalTerminalService: IExternalTerminalService | undefined = undefined;
 
-export function runInExternalTerminal(args: DebugProtocol.RunInTerminalRequestArguments, configProvider: ExtHostConfigProvider): Promise<number | undefined> {
+function runInExternalTerminal(args: DebugProtocol.RunInTerminalRequestArguments, configProvider: ExtHostConfigProvider): Promise<number | undefined> {
 	if (!externalTerminalService) {
 		if (platform.isWindows) {
 			externalTerminalService = new WindowsExternalTerminalService();

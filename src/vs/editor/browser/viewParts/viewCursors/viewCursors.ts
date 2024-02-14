@@ -16,6 +16,8 @@ import { ViewContext } from 'vs/editor/common/viewModel/viewContext';
 import * as viewEvents from 'vs/editor/common/viewEvents';
 import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { isHighContrast } from 'vs/platform/theme/common/theme';
+import { CursorChangeReason } from 'vs/editor/common/cursorEvents';
+import { WindowIntervalTimer, getWindow } from 'vs/base/browser/dom';
 
 export class ViewCursors extends ViewPart {
 
@@ -24,7 +26,7 @@ export class ViewCursors extends ViewPart {
 	private _readOnly: boolean;
 	private _cursorBlinking: TextEditorCursorBlinkingStyle;
 	private _cursorStyle: TextEditorCursorStyle;
-	private _cursorSmoothCaretAnimation: boolean;
+	private _cursorSmoothCaretAnimation: 'off' | 'explicit' | 'on';
 	private _selectionIsEmpty: boolean;
 	private _isComposingInput: boolean;
 
@@ -67,7 +69,7 @@ export class ViewCursors extends ViewPart {
 		this._domNode.appendChild(this._primaryCursor.getDomNode());
 
 		this._startCursorBlinkAnimation = new TimeoutTimer();
-		this._cursorFlatBlinkInterval = new IntervalTimer();
+		this._cursorFlatBlinkInterval = new WindowIntervalTimer();
 
 		this._blinkingEnabled = false;
 
@@ -113,8 +115,12 @@ export class ViewCursors extends ViewPart {
 		}
 		return true;
 	}
-	private _onCursorPositionChanged(position: Position, secondaryPositions: Position[]): void {
-		this._primaryCursor.onCursorPositionChanged(position);
+	private _onCursorPositionChanged(position: Position, secondaryPositions: Position[], reason: CursorChangeReason): void {
+		const pauseAnimation = (
+			this._secondaryCursors.length !== secondaryPositions.length
+			|| (this._cursorSmoothCaretAnimation === 'explicit' && reason !== CursorChangeReason.Explicit)
+		);
+		this._primaryCursor.onCursorPositionChanged(position, pauseAnimation);
 		this._updateBlinking();
 
 		if (this._secondaryCursors.length < secondaryPositions.length) {
@@ -135,7 +141,7 @@ export class ViewCursors extends ViewPart {
 		}
 
 		for (let i = 0; i < secondaryPositions.length; i++) {
-			this._secondaryCursors[i].onCursorPositionChanged(secondaryPositions[i]);
+			this._secondaryCursors[i].onCursorPositionChanged(secondaryPositions[i], pauseAnimation);
 		}
 
 	}
@@ -144,7 +150,7 @@ export class ViewCursors extends ViewPart {
 		for (let i = 0, len = e.selections.length; i < len; i++) {
 			positions[i] = e.selections[i].getPosition();
 		}
-		this._onCursorPositionChanged(positions[0], positions.slice(1));
+		this._onCursorPositionChanged(positions[0], positions.slice(1), e.reason);
 
 		const selectionIsEmpty = e.selections[0].isEmpty();
 		if (this._selectionIsEmpty !== selectionIsEmpty) {
@@ -248,7 +254,7 @@ export class ViewCursors extends ViewPart {
 					} else {
 						this._show();
 					}
-				}, ViewCursors.BLINK_INTERVAL);
+				}, ViewCursors.BLINK_INTERVAL, getWindow(this._domNode.domNode));
 			} else {
 				this._startCursorBlinkAnimation.setIfNotSet(() => {
 					this._blinkingEnabled = true;
@@ -313,7 +319,7 @@ export class ViewCursors extends ViewPart {
 		} else {
 			result += ' cursor-solid';
 		}
-		if (this._cursorSmoothCaretAnimation) {
+		if (this._cursorSmoothCaretAnimation === 'on' || this._cursorSmoothCaretAnimation === 'explicit') {
 			result += ' cursor-smooth-caret-animation';
 		}
 		return result;
@@ -375,7 +381,6 @@ registerThemingParticipant((theme, collector) => {
 		if (!caretBackground) {
 			caretBackground = caret.opposite();
 		}
-		collector.addRule(`.monaco-editor .inputarea.ime-input { caret-color: ${caret}; }`);
 		collector.addRule(`.monaco-editor .cursors-layer .cursor { background-color: ${caret}; border-color: ${caret}; color: ${caretBackground}; }`);
 		if (isHighContrast(theme.type)) {
 			collector.addRule(`.monaco-editor .cursors-layer.has-selection .cursor { border-left: 1px solid ${caretBackground}; border-right: 1px solid ${caretBackground}; }`);

@@ -30,11 +30,6 @@ export const OUTPUT_MODE_ID = 'Log';
 export const LOG_MIME = 'text/x-code-log-output';
 
 /**
- * Log resource scheme.
- */
-export const LOG_SCHEME = 'log';
-
-/**
  * Id used by the log output editor.
  */
 export const LOG_MODE_ID = 'log';
@@ -44,17 +39,13 @@ export const LOG_MODE_ID = 'log';
  */
 export const OUTPUT_VIEW_ID = 'workbench.panel.output';
 
-export const OUTPUT_SERVICE_ID = 'outputService';
-
-export const MAX_OUTPUT_LENGTH = 10000 /* Max. number of output lines to show in output */ * 100 /* Guestimated chars per line */;
-
 export const CONTEXT_IN_OUTPUT = new RawContextKey<boolean>('inOutput', false);
 
-export const CONTEXT_ACTIVE_LOG_OUTPUT = new RawContextKey<boolean>('activeLogOutput', false);
+export const CONTEXT_ACTIVE_FILE_OUTPUT = new RawContextKey<boolean>('activeLogOutput', false);
 
 export const CONTEXT_OUTPUT_SCROLL_LOCK = new RawContextKey<boolean>(`outputView.scrollLock`, false);
 
-export const IOutputService = createDecorator<IOutputService>(OUTPUT_SERVICE_ID);
+export const IOutputService = createDecorator<IOutputService>('outputService');
 
 /**
  * The output service to manage output from the various processes running.
@@ -155,6 +146,7 @@ export interface IOutputChannelDescriptor {
 	log: boolean;
 	languageId?: string;
 	file?: URI;
+	extensionId?: string;
 }
 
 export interface IFileOutputChannelDescriptor extends IOutputChannelDescriptor {
@@ -220,3 +212,5 @@ class OutputChannelRegistry implements IOutputChannelRegistry {
 }
 
 Registry.add(Extensions.OutputChannels, new OutputChannelRegistry());
+
+export const ACTIVE_OUTPUT_CHANNEL_CONTEXT = new RawContextKey<string>('activeOutputChannel', '');

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { LanguageFeatureRegistry, NotebookInfoResolver } from 'vs/editor/common/languageFeatureRegistry';
-import { CodeActionProvider, CodeLensProvider, CompletionItemProvider, DeclarationProvider, DefinitionProvider, DocumentColorProvider, DocumentFormattingEditProvider, DocumentHighlightProvider, DocumentOnDropEditProvider, DocumentRangeFormattingEditProvider, DocumentRangeSemanticTokensProvider, DocumentSemanticTokensProvider, DocumentSymbolProvider, EvaluatableExpressionProvider, FoldingRangeProvider, HoverProvider, ImplementationProvider, InlayHintsProvider, InlineCompletionsProvider, InlineValuesProvider, LinkedEditingRangeProvider, LinkProvider, OnTypeFormattingEditProvider, ReferenceProvider, RenameProvider, SelectionRangeProvider, SignatureHelpProvider, TypeDefinitionProvider } from 'vs/editor/common/languages';
+import { CodeActionProvider, CodeLensProvider, CompletionItemProvider, DeclarationProvider, DefinitionProvider, DocumentColorProvider, DocumentFormattingEditProvider, DocumentHighlightProvider, DocumentOnDropEditProvider, DocumentPasteEditProvider, DocumentRangeFormattingEditProvider, DocumentRangeSemanticTokensProvider, DocumentSemanticTokensProvider, DocumentSymbolProvider, EvaluatableExpressionProvider, FoldingRangeProvider, HoverProvider, ImplementationProvider, InlayHintsProvider, InlineCompletionsProvider, InlineValuesProvider, LinkedEditingRangeProvider, LinkProvider, MappedEditsProvider, MultiDocumentHighlightProvider, NewSymbolNamesProvider, OnTypeFormattingEditProvider, ReferenceProvider, RenameProvider, SelectionRangeProvider, SignatureHelpProvider, TypeDefinitionProvider } from 'vs/editor/common/languages';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 
 export const ILanguageFeaturesService = createDecorator<ILanguageFeaturesService>('ILanguageFeaturesService');
@@ -25,7 +25,11 @@ export interface ILanguageFeaturesService {
 
 	readonly codeActionProvider: LanguageFeatureRegistry<CodeActionProvider>;
 
+	readonly documentPasteEditProvider: LanguageFeatureRegistry<DocumentPasteEditProvider>;
+
 	readonly renameProvider: LanguageFeatureRegistry<RenameProvider>;
+
+	readonly newSymbolNamesProvider: LanguageFeatureRegistry<NewSymbolNamesProvider>;
 
 	readonly documentFormattingEditProvider: LanguageFeatureRegistry<DocumentFormattingEditProvider>;
 
@@ -46,6 +50,8 @@ export interface ILanguageFeaturesService {
 	readonly hoverProvider: LanguageFeatureRegistry<HoverProvider>;
 
 	readonly documentHighlightProvider: LanguageFeatureRegistry<DocumentHighlightProvider>;
+
+	readonly multiDocumentHighlightProvider: LanguageFeatureRegistry<MultiDocumentHighlightProvider>;
 
 	readonly documentRangeSemanticTokensProvider: LanguageFeatureRegistry<DocumentRangeSemanticTokensProvider>;
 
@@ -68,6 +74,8 @@ export interface ILanguageFeaturesService {
 	readonly evaluatableExpressionProvider: LanguageFeatureRegistry<EvaluatableExpressionProvider>;
 
 	readonly documentOnDropEditProvider: LanguageFeatureRegistry<DocumentOnDropEditProvider>;
+
+	readonly mappedEditsProvider: LanguageFeatureRegistry<MappedEditsProvider>;
 
 	// --
 

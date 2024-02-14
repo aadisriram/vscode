@@ -10,7 +10,7 @@ import { SuggestController } from 'vs/editor/contrib/suggest/browser/suggestCont
 import { localize } from 'vs/nls';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { SuggestEnabledInput } from 'vs/workbench/contrib/codeEditor/browser/suggestEnabledInput/suggestEnabledInput';
-import { EXTENSION_SETTING_TAG, FEATURE_SETTING_TAG, GENERAL_TAG_SETTING_TAG, LANGUAGE_SETTING_TAG, MODIFIED_SETTING_TAG } from 'vs/workbench/contrib/preferences/common/preferences';
+import { EXTENSION_SETTING_TAG, FEATURE_SETTING_TAG, GENERAL_TAG_SETTING_TAG, LANGUAGE_SETTING_TAG, MODIFIED_SETTING_TAG, POLICY_SETTING_TAG } from 'vs/workbench/contrib/preferences/common/preferences';
 
 export class SettingsSearchFilterDropdownMenuActionViewItem extends DropdownMenuActionViewItem {
 	private readonly suggestController: SuggestController | null;
@@ -57,9 +57,7 @@ export class SettingsSearchFilterDropdownMenuActionViewItem extends DropdownMenu
 			tooltip,
 			class: undefined,
 			enabled: true,
-			checked: false,
-			run: () => { this.doSearchWidgetAction(queryToAppend, triggerSuggest); },
-			dispose: () => { }
+			run: () => { this.doSearchWidgetAction(queryToAppend, triggerSuggest); }
 		};
 	}
 
@@ -89,8 +87,7 @@ export class SettingsSearchFilterDropdownMenuActionViewItem extends DropdownMenu
 					this.searchWidget.setValue(queryWithRemovedTags);
 				}
 				this.searchWidget.focus();
-			},
-			dispose: () => { }
+			}
 		};
 	}
 
@@ -107,7 +104,7 @@ export class SettingsSearchFilterDropdownMenuActionViewItem extends DropdownMenu
 				localize('extSettingsSearch', "Extension ID..."),
 				localize('extSettingsSearchTooltip', "Add extension ID filter"),
 				`@${EXTENSION_SETTING_TAG}`,
-				false
+				true
 			),
 			this.createAction(
 				'featuresSettingsSearch',
@@ -135,6 +132,12 @@ export class SettingsSearchFilterDropdownMenuActionViewItem extends DropdownMenu
 				localize('onlineSettingsSearch', "Online services"),
 				localize('onlineSettingsSearchTooltip', "Show settings for online services"),
 				'@tag:usesOnlineServices'
+			),
+			this.createToggleAction(
+				'policySettingsSearch',
+				localize('policySettingsSearch', "Policy services"),
+				localize('policySettingsSearchTooltip', "Show settings for policy services"),
+				`@${POLICY_SETTING_TAG}`
 			)
 		];
 	}

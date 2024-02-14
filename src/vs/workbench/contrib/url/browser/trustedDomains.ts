@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { URI } from 'vs/base/common/uri';
-import { localize } from 'vs/nls';
+import { localize, localize2 } from 'vs/nls';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IProductService } from 'vs/platform/product/common/productService';
 import { IQuickInputService, IQuickPickItem } from 'vs/platform/quickinput/common/quickInput';
@@ -25,7 +25,7 @@ export const TRUSTED_DOMAINS_CONTENT_STORAGE_KEY = 'http.linkProtectionTrustedDo
 export const manageTrustedDomainSettingsCommand = {
 	id: 'workbench.action.manageTrustedDomain',
 	description: {
-		description: localize('trustedDomain.manageTrustedDomain', 'Manage Trusted Domains'),
+		description: localize2('trustedDomain.manageTrustedDomain', 'Manage Trusted Domains'),
 		args: []
 	},
 	handler: async (accessor: ServicesAccessor) => {
@@ -112,11 +112,11 @@ export async function configureOpenerTrustedDomainsHandler(
 			case 'trust': {
 				const itemToTrust = pickedResult.toTrust;
 				if (trustedDomains.indexOf(itemToTrust) === -1) {
-					storageService.remove(TRUSTED_DOMAINS_CONTENT_STORAGE_KEY, StorageScope.GLOBAL);
+					storageService.remove(TRUSTED_DOMAINS_CONTENT_STORAGE_KEY, StorageScope.APPLICATION);
 					storageService.store(
 						TRUSTED_DOMAINS_STORAGE_KEY,
 						JSON.stringify([...trustedDomains, itemToTrust]),
-						StorageScope.GLOBAL,
+						StorageScope.APPLICATION,
 						StorageTarget.USER
 					);
 
@@ -214,7 +214,7 @@ export function readStaticTrustedDomains(accessor: ServicesAccessor): IStaticTru
 
 	let trustedDomains: string[] = [];
 	try {
-		const trustedDomainsSrc = storageService.get(TRUSTED_DOMAINS_STORAGE_KEY, StorageScope.GLOBAL);
+		const trustedDomainsSrc = storageService.get(TRUSTED_DOMAINS_STORAGE_KEY, StorageScope.APPLICATION);
 		if (trustedDomainsSrc) {
 			trustedDomains = JSON.parse(trustedDomainsSrc);
 		}

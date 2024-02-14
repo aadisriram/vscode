@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { createStyleSheet, isInShadowDOM, ModifierKeyEmitter } from 'vs/base/browser/dom';
+import { ModifierKeyEmitter } from 'vs/base/browser/dom';
 import { isNonEmptyArray } from 'vs/base/common/arrays';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { CancellationToken, CancellationTokenSource } from 'vs/base/common/cancellation';
@@ -15,6 +15,7 @@ import { assertType } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
 import { IActiveCodeEditor, ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { ClassNameReference, CssProperties, DynamicCssRules } from 'vs/editor/browser/editorDom';
+import { StableEditorScrollState } from 'vs/editor/browser/stableEditorScroll';
 import { EditorOption, EDITOR_FONT_DEFAULTS } from 'vs/editor/common/config/editorOptions';
 import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Range } from 'vs/editor/common/core/range';
@@ -28,13 +29,9 @@ import { ITextModelService } from 'vs/editor/common/services/resolverService';
 import { ClickLinkGesture, ClickLinkMouseEvent } from 'vs/editor/contrib/gotoSymbol/browser/link/clickLinkGesture';
 import { InlayHintAnchor, InlayHintItem, InlayHintsFragments } from 'vs/editor/contrib/inlayHints/browser/inlayHints';
 import { goToDefinitionWithLocation, showGoToContextMenu } from 'vs/editor/contrib/inlayHints/browser/inlayHintsLocations';
-import { localize } from 'vs/nls';
-import { Action2, MenuId, registerAction2 } from 'vs/platform/actions/common/actions';
 import { CommandsRegistry, ICommandService } from 'vs/platform/commands/common/commands';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
-import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
-import { createDecorator, IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
+import { InstantiationType, registerSingleton } from 'vs/platform/instantiation/common/extensions';
+import { createDecorator, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
 import * as colors from 'vs/platform/theme/common/colorRegistry';
 import { themeColorFromId } from 'vs/platform/theme/common/themeService';
@@ -64,7 +61,7 @@ class InlayHintsCache {
 
 interface IInlayHintsCache extends InlayHintsCache { }
 const IInlayHintsCache = createDecorator<IInlayHintsCache>('IInlayHintsCache');
-registerSingleton(IInlayHintsCache, InlayHintsCache, true);
+registerSingleton(IInlayHintsCache, InlayHintsCache, InstantiationType.Delayed);
 
 // --- rendered label
 
@@ -91,6 +88,11 @@ type InlayHintDecorationRenderInfo = {
 	classNameRef: ClassNameReference;
 };
 
+const enum RenderMode {
+	Normal,
+	Invisible
+}
+
 // --- controller
 
 export class InlayHintsController implements IEditorContribution {
@@ -98,7 +100,7 @@ export class InlayHintsController implements IEditorContribution {
 	static readonly ID: string = 'editor.contrib.InlayHints';
 
 	private static readonly _MAX_DECORATORS = 1500;
-	private static readonly _renderModeCssVariable: any = '--inlay-hints-render-mode';
+	private static readonly _MAX_LABEL_LEN = 43;
 
 	static get(editor: ICodeEditor): InlayHintsController | undefined {
 		return editor.getContribution<InlayHintsController>(InlayHintsController.ID) ?? undefined;
@@ -109,8 +111,8 @@ export class InlayHintsController implements IEditorContribution {
 	private readonly _debounceInfo: IFeatureDebounceInformation;
 	private readonly _decorationsMetadata = new Map<string, InlayHintDecorationRenderInfo>();
 	private readonly _ruleFactory = new DynamicCssRules(this._editor);
-	private readonly _styleElement: HTMLStyleElement;
 
+	private _activeRenderMode = RenderMode.Normal;
 	private _activeInlayHintPart?: ActiveInlayHintInfo;
 
 	constructor(
@@ -122,7 +124,6 @@ export class InlayHintsController implements IEditorContribution {
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IInstantiationService private readonly _instaService: IInstantiationService,
 	) {
-		this._styleElement = createStyleSheet(isInShadowDOM(this._editor.getContainerDomNode()) ? this._editor.getContainerDomNode() : undefined);
 		this._debounceInfo = _featureDebounce.for(_languageFeaturesService.inlayHintsProvider, 'InlayHint', { min: 25 });
 		this._disposables.add(_languageFeaturesService.inlayHintsProvider.onDidChange(() => this._update()));
 		this._disposables.add(_editor.onDidChangeModel(() => this._update()));
@@ -140,7 +141,6 @@ export class InlayHintsController implements IEditorContribution {
 		this._sessionDisposables.dispose();
 		this._removeAllDecorations();
 		this._disposables.dispose();
-		this._styleElement.remove();
 	}
 
 	private _update(): void {
@@ -148,13 +148,44 @@ export class InlayHintsController implements IEditorContribution {
 		this._removeAllDecorations();
 
 		const options = this._editor.getOption(EditorOption.inlayHints);
-		if (!options.enabled) {
+		if (options.enabled === 'off') {
 			return;
 		}
 
 		const model = this._editor.getModel();
 		if (!model || !this._languageFeaturesService.inlayHintsProvider.has(model)) {
 			return;
+		}
+
+		if (options.enabled === 'on') {
+			// different "on" modes: always
+			this._activeRenderMode = RenderMode.Normal;
+		} else {
+			// different "on" modes: offUnlessPressed, or onUnlessPressed
+			let defaultMode: RenderMode;
+			let altMode: RenderMode;
+			if (options.enabled === 'onUnlessPressed') {
+				defaultMode = RenderMode.Normal;
+				altMode = RenderMode.Invisible;
+			} else {
+				defaultMode = RenderMode.Invisible;
+				altMode = RenderMode.Normal;
+			}
+			this._activeRenderMode = defaultMode;
+
+			this._sessionDisposables.add(ModifierKeyEmitter.getInstance().event(e => {
+				if (!this._editor.hasModel()) {
+					return;
+				}
+				const newRenderMode = e.altKey && e.ctrlKey && !(e.shiftKey || e.metaKey) ? altMode : defaultMode;
+				if (newRenderMode !== this._activeRenderMode) {
+					this._activeRenderMode = newRenderMode;
+					const model = this._editor.getModel();
+					const copies = this._copyInlayHintsWithCurrentAnchor(model);
+					this._updateHintsDecorators([model.getFullModelRange()], copies);
+					scheduler.schedule(0);
+				}
+			}));
 		}
 
 		// iff possible, quickly update from cache
@@ -170,7 +201,7 @@ export class InlayHintsController implements IEditorContribution {
 		}));
 
 		let cts: CancellationTokenSource | undefined;
-		let watchedProviders = new Set<languages.InlayHintsProvider>();
+		const watchedProviders = new Set<languages.InlayHintsProvider>();
 
 		const scheduler = new RunOnceScheduler(async () => {
 			const t1 = Date.now();
@@ -227,35 +258,12 @@ export class InlayHintsController implements IEditorContribution {
 			}
 		}));
 		this._sessionDisposables.add(this._editor.onDidChangeModelContent((e) => {
+			cts?.cancel();
+
 			// update less aggressive when typing
 			const delay = Math.max(scheduler.delay, 1250);
 			scheduler.schedule(delay);
 		}));
-
-		if (!options.toggle) {
-			this._editor.getContainerDomNode().style.setProperty(InlayHintsController._renderModeCssVariable, 'inherit');
-
-		} else {
-			type Modes = 'inherit' | 'none';
-			let defaultMode: Modes;
-			let altMode: Modes;
-			if (options.toggle === 'hide') {
-				defaultMode = 'inherit';
-				altMode = 'none';
-			} else {
-				defaultMode = 'none';
-				altMode = 'inherit';
-			}
-			this._editor.getContainerDomNode().style.setProperty(InlayHintsController._renderModeCssVariable, defaultMode);
-			let renderMode = defaultMode;
-			this._sessionDisposables.add(ModifierKeyEmitter.getInstance().event(e => {
-				const newRenderMode = e.altKey && e.ctrlKey ? altMode : defaultMode;
-				if (newRenderMode !== renderMode) {
-					this._editor.getContainerDomNode().style.setProperty(InlayHintsController._renderModeCssVariable, newRenderMode);
-					renderMode = newRenderMode;
-				}
-			}));
-		}
 
 		// mouse gestures
 		this._sessionDisposables.add(this._installDblClickGesture(() => scheduler.schedule(0)));
@@ -293,7 +301,7 @@ export class InlayHintsController implements IEditorContribution {
 				? new ActiveInlayHintInfo(labelPart, mouseEvent.hasTriggerModifier)
 				: undefined;
 
-			const lineNumber = labelPart.item.hint.position.lineNumber;
+			const lineNumber = model.validatePosition(labelPart.item.hint.position).lineNumber;
 			const range = new Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber));
 			const lineHints = this._getInlineHintsForRange(range);
 			this._updateHintsDecorators([range], lineHints);
@@ -384,6 +392,13 @@ export class InlayHintsController implements IEditorContribution {
 	}
 
 	private _cacheHintsForFastRestore(model: ITextModel): void {
+		const hints = this._copyInlayHintsWithCurrentAnchor(model);
+		this._inlayHintsCache.set(model, hints);
+	}
+
+	// return inlay hints but with an anchor that reflects "updates"
+	// that happened after receiving them, e.g adding new lines before a hint
+	private _copyInlayHintsWithCurrentAnchor(model: ITextModel): InlayHintItem[] {
 		const items = new Map<InlayHintItem, InlayHintItem>();
 		for (const [id, obj] of this._decorationsMetadata) {
 			if (items.has(obj.item)) {
@@ -391,16 +406,15 @@ export class InlayHintsController implements IEditorContribution {
 				// but they will all uses the same range
 				continue;
 			}
-			let value = obj.item;
 			const range = model.getDecorationRange(id);
 			if (range) {
 				// update range with whatever the editor has tweaked it to
 				const anchor = new InlayHintAnchor(range, obj.item.anchor.direction);
-				value = obj.item.with({ anchor });
+				const copy = obj.item.with({ anchor });
+				items.set(obj.item, copy);
 			}
-			items.set(obj.item, value);
 		}
-		this._inlayHintsCache.set(model, Array.from(items.values()));
+		return Array.from(items.values());
 	}
 
 	private _getHintsRanges(): Range[] {
@@ -442,7 +456,7 @@ export class InlayHintsController implements IEditorContribution {
 						showIfCollapsed: item.anchor.range.isEmpty(), // "original" range is empty
 						collapseOnReplaceEdit: !item.anchor.range.isEmpty(),
 						stickiness: TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
-						[item.anchor.direction]: opts
+						[item.anchor.direction]: this._activeRenderMode === RenderMode.Normal ? opts : undefined
 					}
 				}
 			});
@@ -458,11 +472,23 @@ export class InlayHintsController implements IEditorContribution {
 
 
 		//
-		const { fontSize, fontFamily, displayStyle } = this._getLayoutInfo();
+		const { fontSize, fontFamily, padding, isUniform } = this._getLayoutInfo();
 		const fontFamilyVar = '--code-editorInlayHintsFontFamily';
 		this._editor.getContainerDomNode().style.setProperty(fontFamilyVar, fontFamily);
 
+
+		type ILineInfo = { line: number; totalLen: number };
+		let currentLineInfo: ILineInfo = { line: 0, totalLen: 0 };
+
 		for (const item of items) {
+
+			if (currentLineInfo.line !== item.anchor.range.startLineNumber) {
+				currentLineInfo = { line: item.anchor.range.startLineNumber, totalLen: 0 };
+			}
+
+			if (currentLineInfo.totalLen > InlayHintsController._MAX_LABEL_LEN) {
+				continue;
+			}
 
 			// whitespace leading the actual label
 			if (item.hint.paddingLeft) {
@@ -483,6 +509,8 @@ export class InlayHintsController implements IEditorContribution {
 				const cssProperties: CssProperties = {
 					fontSize: `${fontSize}px`,
 					fontFamily: `var(${fontFamilyVar}), ${EDITOR_FONT_DEFAULTS.fontFamily}`,
+					verticalAlign: isUniform ? 'baseline' : 'middle',
+					unicodeBidi: 'isolate'
 				};
 
 				if (isNonEmptyArray(item.hint.textEdits)) {
@@ -500,9 +528,7 @@ export class InlayHintsController implements IEditorContribution {
 					}
 				}
 
-				if (displayStyle === 'standard') {
-					cssProperties.verticalAlign = 'middle';
-
+				if (padding) {
 					if (isFirst && isLast) {
 						// only element
 						cssProperties.padding = `1px ${Math.max(1, fontSize / 4) | 0}px`;
@@ -520,13 +546,26 @@ export class InlayHintsController implements IEditorContribution {
 					}
 				}
 
+				let textlabel = part.label;
+				currentLineInfo.totalLen += textlabel.length;
+				let tooLong = false;
+				const over = currentLineInfo.totalLen - InlayHintsController._MAX_LABEL_LEN;
+				if (over > 0) {
+					textlabel = textlabel.slice(0, -over) + '…';
+					tooLong = true;
+				}
+
 				addInjectedText(
 					item,
 					this._ruleFactory.createClassNameRef(cssProperties),
-					fixSpace(part.label),
+					fixSpace(textlabel),
 					isLast && !item.hint.paddingRight ? InjectedTextCursorStops.Right : InjectedTextCursorStops.None,
 					new RenderedInlayHintLabelPart(item, i)
 				);
+
+				if (tooLong) {
+					break;
+				}
 			}
 
 			// whitespace trailing the actual label
@@ -542,28 +581,26 @@ export class InlayHintsController implements IEditorContribution {
 		// collect all decoration ids that are affected by the ranges
 		// and only update those decorations
 		const decorationIdsToReplace: string[] = [];
-		for (const range of ranges) {
-
-			for (const { id } of this._editor.getDecorationsInRange(range) ?? []) {
-				const metadata = this._decorationsMetadata.get(id);
-				if (metadata) {
-					decorationIdsToReplace.push(id);
-					metadata.classNameRef.dispose();
-					this._decorationsMetadata.delete(id);
-				}
+		for (const [id, metadata] of this._decorationsMetadata) {
+			const range = this._editor.getModel()?.getDecorationRange(id);
+			if (range && ranges.some(r => r.containsRange(range))) {
+				decorationIdsToReplace.push(id);
+				metadata.classNameRef.dispose();
+				this._decorationsMetadata.delete(id);
 			}
 		}
-		const newDecorationIds = this._editor.deltaDecorations(decorationIdsToReplace, newDecorationsData.map(d => d.decoration));
-		for (let i = 0; i < newDecorationIds.length; i++) {
-			const data = newDecorationsData[i];
-			this._decorationsMetadata.set(newDecorationIds[i], data);
-		}
 
-		const allClassNames: string[] = [];
-		for (let data of this._decorationsMetadata.values()) {
-			allClassNames.push(`.${data.classNameRef.className}`);
-		}
-		this._styleElement.textContent = `${allClassNames.join(', ')} { display: var(${InlayHintsController._renderModeCssVariable}) !important; }`;
+		const scrollState = StableEditorScrollState.capture(this._editor);
+
+		this._editor.changeDecorations(accessor => {
+			const newDecorationIds = accessor.deltaDecorations(decorationIdsToReplace, newDecorationsData.map(d => d.decoration));
+			for (let i = 0; i < newDecorationIds.length; i++) {
+				const data = newDecorationsData[i];
+				this._decorationsMetadata.set(newDecorationIds[i], data);
+			}
+		});
+
+		scrollState.restore(this._editor);
 	}
 
 	private _fillInColors(props: CssProperties, hint: languages.InlayHint): void {
@@ -581,18 +618,28 @@ export class InlayHintsController implements IEditorContribution {
 
 	private _getLayoutInfo() {
 		const options = this._editor.getOption(EditorOption.inlayHints);
+		const padding = options.padding;
+
 		const editorFontSize = this._editor.getOption(EditorOption.fontSize);
+		const editorFontFamily = this._editor.getOption(EditorOption.fontFamily);
+
 		let fontSize = options.fontSize;
 		if (!fontSize || fontSize < 5 || fontSize > editorFontSize) {
 			fontSize = editorFontSize;
 		}
-		const fontFamily = options.fontFamily || this._editor.getOption(EditorOption.fontFamily);
-		return { fontSize, fontFamily, displayStyle: options.displayStyle };
+
+		const fontFamily = options.fontFamily || editorFontFamily;
+
+		const isUniform = !padding
+			&& fontFamily === editorFontFamily
+			&& fontSize === editorFontSize;
+
+		return { fontSize, fontFamily, padding, isUniform };
 	}
 
 	private _removeAllDecorations(): void {
-		this._editor.deltaDecorations(Array.from(this._decorationsMetadata.keys()), []);
-		for (let obj of this._decorationsMetadata.values()) {
+		this._editor.removeDecorations(Array.from(this._decorationsMetadata.keys()));
+		for (const obj of this._decorationsMetadata.values()) {
 			obj.classNameRef.dispose();
 		}
 		this._decorationsMetadata.clear();
@@ -607,7 +654,7 @@ export class InlayHintsController implements IEditorContribution {
 		}
 		const set = new Set<languages.InlayHint>();
 		const result: InlayHintItem[] = [];
-		for (let deco of this._editor.getLineDecorations(line)) {
+		for (const deco of this._editor.getLineDecorations(line)) {
 			const data = this._decorationsMetadata.get(deco.id);
 			if (data && !set.has(data.item.hint)) {
 				set.add(data.item.hint);
@@ -625,7 +672,6 @@ function fixSpace(str: string): string {
 	return str.replace(/[ \t]/g, noBreakWhitespace);
 }
 
-
 CommandsRegistry.registerCommand('_executeInlayHintProvider', async (accessor, ...args: [URI, IRange]): Promise<languages.InlayHint[]> => {
 
 	const [uri, range] = args;
@@ -642,37 +688,4 @@ CommandsRegistry.registerCommand('_executeInlayHintProvider', async (accessor, .
 	} finally {
 		ref.dispose();
 	}
-});
-
-
-registerAction2(class ToggleInlayHints extends Action2 {
-
-	private static _key = 'editor.inlayHints.enabled';
-
-	constructor() {
-		super({
-			id: 'inlayhint.toggle',
-			title: {
-				value: localize('toggle', "Toggle Inlay Hints"),
-				mnemonicTitle: localize('toggleMnem', "Show &&Inlay Hints"),
-				original: 'Toggle Inlay Hints',
-			},
-			category: localize('view', 'View'),
-			toggled: ContextKeyExpr.equals(`config.${ToggleInlayHints._key}`, true),
-			f1: true,
-			menu: [{
-				id: MenuId.MenubarViewMenu,
-				group: '5_editor',
-				order: 3.5,
-			}]
-		});
-	}
-
-	run(accessor: ServicesAccessor, ...args: any[]): void {
-		let config = accessor.get(IConfigurationService);
-		const value = Boolean(config.getValue<boolean>(ToggleInlayHints._key));
-		config.updateValue(ToggleInlayHints._key, !value);
-
-	}
-
 });
